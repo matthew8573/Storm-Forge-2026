@@ -1,0 +1,42 @@
+@page
+@model DataEntryModel
+@{
+    ViewData["Title"] = "Data Entry";
+}
+
+<h2 class="mb-4">Daily Data Entry</h2>
+
+<!-- Date picker -->
+<div class="row mb-3">
+    <div class="col-auto">
+        <label class="form-label" for="entry-date">Date</label>
+        <input type="date" id="entry-date" class="form-control" />
+    </div>
+</div>
+
+<!-- Driver tabs -->
+<ul class="nav nav-tabs mb-0" id="driver-tabs"></ul>
+
+<!-- Restaurant table -->
+<div id="driver-content" class="border border-top-0 rounded-bottom p-3 d-none">
+    <table class="table table-bordered" id="restaurant-table">
+        <thead>
+            <tr>
+                <th>Restaurant</th>
+                <th>Pho (kg)</th>
+                <th>Bun (kg)</th>
+            </tr>
+        </thead>
+        <tbody id="restaurant-rows"></tbody>
+    </table>
+    <div class="text-end mt-2">
+        <button class="btn btn-primary" id="submit-btn">Submit</button>
+    </div>
+    <div id="error-msg" class="alert alert-danger mt-2 d-none"></div>
+</div>
+
+<div id="empty-state" class="text-muted mt-3 d-none">No restaurants added yet — click [+] to add one.</div>
+
+@section Scripts {
+    <script src="~/js/dataentry.js" asp-append-version="true"></script>
+}

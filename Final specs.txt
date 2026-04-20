@@ -1,0 +1,365 @@
+# Noodle Delivery App — Revised MVP Spec
+
+Working doc for implementation. Complements the original stakeholder PDF; where this doc and the PDF disagree, this doc wins.
+
+**Stack:** ASP.NET Core 8 + Razor Pages + EF Core + SQLite, clean-architecture layout.
+**Scope:** Single internal operator, local-only deployment. No auth, no cloud, no accounting integration — but data model is built so accounting export drops in later without schema changes.
+
+---
+
+## 1. Domain model
+
+Four changes from the original PDF:
+
+1. **Products are a first-class entity**, not hardcoded columns on `orders`. Only Pho and Bun exist at MVP (seeded), but new noodle types can be added later without migrations.
+2. **Orders are normalized** into a header (`orders`) + line items (`order_items`). One submit per (date, driver, restaurant) = one order with 1–2 line items.
+3. **Price history** is tracked in `product_prices` with effective-from dates. Prices are snapshotted onto `order_items.unit_price` at order-creation time.
+4. **Soft delete via `is_active`** on drivers and restaurants. Hard DELETE remains available but is blocked if any orders reference the row.
+
+### Entities
+
+**drivers**
+
+| Column     | Type / Notes                                            |
+|------------|---------------------------------------------------------|
+| driver_id  | INT, PK, auto-increment                                 |
+| name       | VARCHAR(100), NOT NULL                                  |
+| phone      | VARCHAR(20)                                             |
+| is_active  | BOOLEAN, NOT NULL, DEFAULT true                         |
+| created_at | DATETIME, NOT NULL, DEFAULT now                         |
+| updated_at | DATETIME, NOT NULL, DEFAULT now, auto-updated on change |
+
+**restaurants**
+
+| Column        | Type / Notes                         |
+|---------------|--------------------------------------|
+| restaurant_id | INT, PK, auto-increment              |
+| name          | VARCHAR(100), NOT NULL               |
+| address       | VARCHAR(255)                         |
+| phone         | VARCHAR(20)                          |
+| is_active     | BOOLEAN, NOT NULL, DEFAULT true      |
+| created_at    | DATETIME                             |
+| updated_at    | DATETIME                             |
+
+**products** (seeded with Pho and Bun; no CRUD UI in MVP)
+
+| Column     | Type / Notes                         |
+|------------|--------------------------------------|
+| product_id | INT, PK, auto-increment              |
+| name       | VARCHAR(50), NOT NULL, UNIQUE        |
+| is_active  | BOOLEAN, NOT NULL, DEFAULT true      |
+| created_at | DATETIME                             |
+| updated_at | DATETIME                             |
+
+**product_prices** (price history; management UI required)
+
+| Column         | Type / Notes                                    |
+|----------------|-------------------------------------------------|
+| price_id       | INT, PK, auto-increment                         |
+| product_id     | INT, FK → products, NOT NULL                    |
+| unit_price     | DECIMAL(10,2), NOT NULL, CHECK (unit_price > 0) |
+| effective_from | DATE, NOT NULL                                  |
+| created_at     | DATETIME                                        |
+| updated_at     | DATETIME                                        |
+
+Constraint: `UNIQUE (product_id, effective_from)`
+
+**Price lookup rule:** The price for product P on date D is the row with `MAX(effective_from) WHERE effective_from <= D AND product_id = P`. If no such row exists, orders for date D are rejected with error `NO_PRICE_FOR_DATE` (product name and date included in error body).
+
+**orders** (header — one per driver/restaurant/day)
+
+| Column        | Type / Notes                              |
+|---------------|-------------------------------------------|
+| order_id      | INT, PK, auto-increment                   |
+| date          | DATE, NOT NULL                            |
+| driver_id     | INT, FK → drivers, NOT NULL               |
+| restaurant_id | INT, FK → restaurants, NOT NULL           |
+| created_at    | DATETIME                                  |
+| updated_at    | DATETIME                                  |
+
+Constraint: `UNIQUE (date, driver_id, restaurant_id)` — duplicates are rejected.
+
+**order_items** (line items — one per product on an order)
+
+| Column         | Type / Notes                                      |
+|----------------|---------------------------------------------------|
+| order_item_id  | INT, PK, auto-increment                           |
+| order_id       | INT, FK → orders, NOT NULL, ON DELETE CASCADE     |
+| product_id     | INT, FK → products, NOT NULL                      |
+| quantity_kg    | DECIMAL(6,2), NOT NULL, CHECK (quantity_kg >= 0 AND quantity_kg <= 1000000) |
+| unit_price     | DECIMAL(10,2), NOT NULL  *(snapshot at order time)* |
+| line_total     | DECIMAL(12,2), NOT NULL  *(quantity_kg × unit_price, stored for audit)* |
+
+Constraint: `UNIQUE (order_id, product_id)` — one line per product per order.
+
+**Rule:** `line_total` is computed server-side at insert/update. Never trusted from the client. If `unit_price` changes later in the `product_prices` table, existing `order_items` rows are unaffected — the snapshot is immutable.
+
+### Entity relationships
+
+```
+drivers ─┐
+         ├─< orders >── order_items >── products
+restaurants ─┘                         └─< product_prices
+```
+
+---
+
+## 2. API endpoints
+
+Versioned under `/api/v1`. All responses JSON. All mutations return the affected entity.
+
+### Drivers
+
+| Method | Path                        | Notes                                                |
+|--------|-----------------------------|------------------------------------------------------|
+| GET    | `/drivers`                  | Query: `?include_inactive=false` (default)           |
+| GET    | `/drivers/:id`              |                                                      |
+| POST   | `/drivers`                  | Body: `{ name, phone }`                              |
+| PUT    | `/drivers/:id`              | Body: `{ name, phone, is_active }`                   |
+| DELETE | `/drivers/:id`              | 409 if any orders exist; prefer `is_active = false`  |
+
+### Restaurants
+
+Same pattern as drivers. Body adds `address`.
+
+### Products (read-only in MVP)
+
+| Method | Path           | Notes                                 |
+|--------|----------------|---------------------------------------|
+| GET    | `/products`    | Returns Pho and Bun                   |
+
+### Product prices
+
+| Method | Path                                 | Notes                                                |
+|--------|--------------------------------------|------------------------------------------------------|
+| GET    | `/products/:id/prices`               | Full price history, ordered by `effective_from` DESC |
+| POST   | `/products/:id/prices`               | Body: `{ unit_price, effective_from }`               |
+| PUT    | `/products/:id/prices/:priceId`      | For correcting typos                                 |
+| GET    | `/products/:id/prices/effective?date=YYYY-MM-DD` | Returns price effective on given date, or 404 |
+
+### Orders
+
+| Method | Path                                 | Notes                                                |
+|--------|--------------------------------------|------------------------------------------------------|
+| GET    | `/orders`                            | Query: `?date=&from=&to=&driver_id=&restaurant_id=` (any combination) |
+| GET    | `/orders/:id`                        | Includes nested `order_items` with product names     |
+| POST   | `/orders/batch`                      | All-or-nothing. Body below.                          |
+| PUT    | `/orders/:id`                        | Edit quantities. If date changes, re-snapshot price. |
+| DELETE | `/orders/:id`                        | Cascades to `order_items`.                           |
+
+**POST `/orders/batch` body:**
+
+```json
+{
+  "date": "2025-04-19",
+  "driver_id": 1,
+  "orders": [
+    { "restaurant_id": 3, "items": [
+        { "product_id": 1, "quantity_kg": 10 },
+        { "product_id": 2, "quantity_kg": 2 }
+    ]},
+    { "restaurant_id": 5, "items": [
+        { "product_id": 1, "quantity_kg": 8 }
+    ]}
+  ]
+}
+```
+
+**Server-side rules for `/orders/batch`:**
+
+1. Drop items where `quantity_kg = 0`. Drop orders where all items are zero or empty.
+2. If the resulting order list is empty → 400 `NO_NONZERO_ITEMS`.
+3. For each remaining item, look up the effective price for `date` and `product_id`. If any product has no effective price → 400 `NO_PRICE_FOR_DATE` with the offending product and date. **Whole batch fails.**
+4. Check duplicates: for any `(date, driver_id, restaurant_id)` that already exists in `orders`, → 409 `DUPLICATE_ORDER` listing all offending restaurant IDs. **Whole batch fails.**
+5. If all checks pass, insert the order headers and items in one transaction. Return the created orders.
+
+### Analytics
+
+All take `?from=&to=` (required). Return-shape notes below.
+
+| Method | Path                                              | Notes                                                                 |
+|--------|---------------------------------------------------|-----------------------------------------------------------------------|
+| GET    | `/analytics/summary`                              | KPI cards: `{ total_kg_by_product, total_revenue, top_restaurant, top_driver }` |
+| GET    | `/analytics/top-restaurants?limit=5`              | Array of `{ restaurant_id, name, kg_by_product, revenue }`            |
+| GET    | `/analytics/top-drivers?limit=5`                  | Array of `{ driver_id, name, kg_by_product, revenue }`                |
+| GET    | `/analytics/over-time`                            | Array of `{ date, kg_by_product, revenue }` per day                   |
+| GET    | `/analytics/restaurant-contribution`              | Each restaurant's share of total revenue (for pie chart)              |
+| GET    | `/analytics/entity?type=driver|restaurant&id=`    | Single entity custom query. Returns kg, revenue, and daily breakdown. |
+
+`kg_by_product` is a nested object like `{ "Pho": 120.5, "Bun": 45.0 }` so charts can stack products.
+
+---
+
+## 3. Solution structure (Clean Architecture)
+
+```
+NoodleDelivery.sln
+├── src/
+│   ├── NoodleDelivery.Domain/              Entities, value objects, domain rules
+│   │   ├── Entities/                       Driver, Restaurant, Product, ProductPrice, Order, OrderItem
+│   │   ├── Common/                         AuditableEntity base, domain exceptions
+│   │   └── Services/                       Pure domain logic (e.g. PriceLookupService)
+│   │
+│   ├── NoodleDelivery.Application/         Use cases, DTOs, interfaces
+│   │   ├── Common/Interfaces/              IAppDbContext, IDateTime, IAccountingExport (future)
+│   │   ├── Drivers/                        Commands + Queries (CRUD)
+│   │   ├── Restaurants/
+│   │   ├── Products/
+│   │   ├── Orders/                         BatchCreateOrders, UpdateOrder, DeleteOrder, GetOrders
+│   │   └── Analytics/                      Summary, TopRestaurants, TopDrivers, OverTime, etc.
+│   │
+│   ├── NoodleDelivery.Infrastructure/      EF Core, DB context, migrations
+│   │   ├── Persistence/
+│   │   │   ├── AppDbContext.cs
+│   │   │   ├── Configurations/             One IEntityTypeConfiguration per entity
+│   │   │   ├── Interceptors/               AuditableEntityInterceptor (auto-set created/updated)
+│   │   │   ├── Migrations/
+│   │   │   └── Seeders/                    Seeds Pho + Bun on first run
+│   │   └── DependencyInjection.cs
+│   │
+│   └── NoodleDelivery.Web/                 Razor Pages + API controllers
+│       ├── Pages/
+│       │   ├── Index.cshtml                Redirects to /DataEntry
+│       │   ├── DataEntry.cshtml(.cs)       Daily entry page
+│       │   ├── Analytics.cshtml(.cs)       Dashboard
+│       │   ├── Manage/                     Drivers, Restaurants, Prices management
+│       │   └── Shared/_Layout.cshtml       Top nav: Data Entry | Analytics | Manage
+│       ├── Api/                            One controller per Application feature folder
+│       └── wwwroot/                        js, css, Chart.js
+│
+└── tests/
+    ├── NoodleDelivery.Domain.Tests/
+    ├── NoodleDelivery.Application.Tests/   Primary target for unit tests (CQRS handlers)
+    └── NoodleDelivery.Web.Tests/            Integration tests with WebApplicationFactory
+```
+
+**Dependency rule:** Web and Infrastructure → Application → Domain. Domain depends on nothing. Infrastructure and Web do not reference each other directly. The Web project composes them via DI in `Program.cs`.
+
+**CQRS via MediatR** (recommended but optional): one handler per command/query in the Application layer. Keeps controllers/pages thin — they just dispatch. If you'd rather skip MediatR, plain services in Application work fine; the structure is the same.
+
+**Future Google Sheets export plugin point:** define `IAccountingExport` in Application. A future `NoodleDelivery.Integrations.GoogleSheets` project implements it. Web registers the implementation in DI. Zero changes to Domain or other Infrastructure code.
+
+---
+
+## 4. UI behavior
+
+### Global
+
+- Top nav: **Data Entry** · **Analytics** · **Manage** (drivers/restaurants/prices).
+- Default route: `/DataEntry`.
+- No auth, no login screen.
+- All mutations: no full page reload. Use `fetch` + vanilla JS, or htmx (lighter-weight; works beautifully with Razor Pages).
+
+### Data Entry page
+
+**Layout:** date picker (top), driver tabs, `[+]` tab at end, restaurant table below, Submit button.
+
+- Date defaults to today.
+- Driver tabs list only `is_active = true` drivers.
+- Clicking `[+]` on the driver tab bar opens a modal: **Add driver** (fields: name, phone).
+- Clicking an existing driver tab's edit icon opens: **Edit driver** (fields: name, phone, is_active toggle).
+- Restaurant table rows: one per `is_active = true` restaurant. Columns: name, Pho (kg), Bun (kg).
+- `[+]` row at the bottom of the restaurant table opens: **Add restaurant** (fields: name, address, phone). Same edit icon pattern for existing rows.
+- Tab key navigates between Pho/Bun inputs cell by cell (native browser behavior — just make sure `tabindex` is correct and no rogue elements break the sequence).
+- Blank input = 0.
+- Validation: `quantity_kg >= 0`, `quantity_kg <= 1000000`. Client-side check on blur + server-side enforce.
+- Client-side state: switching driver tabs preserves unsaved input for each driver in a JS object. Switching back restores it. Page reload clears it (documented for operator).
+- **No pre-fill of existing orders on date-change.** Each submit creates new orders. If duplicate `(date, driver, restaurant)` detected, server returns 409; client shows list of conflicting restaurants with instruction: "Delete the existing order from the Analytics page, or change quantities there, then resubmit."
+- Submit behavior:
+  - Submit button disabled while request in flight.
+  - Success: toast "Saved!" (~2s), clear inputs for that driver only, stay on page.
+  - 400 `NO_PRICE_FOR_DATE`: toast error with offending product name and date, link to Manage → Prices.
+  - 409 `DUPLICATE_ORDER`: inline error listing conflicting restaurant names.
+  - Other errors: generic toast.
+- Empty state if no restaurants: "No restaurants added yet — click [+] to add one."
+
+### Analytics page
+
+**Layout:** KPI cards row → charts grid → custom query panel at bottom.
+
+- **KPI cards** (configurable which ones show, via Toggle Charts):
+  - Total kg (by product: "Pho: 120 kg · Bun: 45 kg")
+  - Total revenue ($)
+  - Top restaurant (by revenue)
+  - Top driver (by revenue)
+- **Default charts:**
+  - Top restaurants (bar, stacked by product) — `limit` configurable, default 5
+  - Top drivers (bar, stacked by product) — `limit` configurable, default 5
+  - kg over time (line, one series per product)
+  - Revenue contribution by restaurant (pie or donut) — configurable whether shown
+- **Metric toggle:** global switch on the page — `kg` / `$` / `both`. Default `both`. Persists in localStorage.
+- **Toggle Charts** control: checkbox list to hide individual charts. Persists in localStorage.
+- **Date range:** default last 30 days. User can change. Last-used range persists in localStorage.
+- **Custom query panel:** entity type (driver | restaurant) + name dropdown + date range + Generate button. Renders a single chart + summary below. Single entity only.
+
+### Manage pages
+
+Three sub-pages:
+- **Drivers** — list with edit/deactivate/delete, plus `[+ New]` button. DELETE shows confirm modal; if blocked by existing orders, suggest "Deactivate instead."
+- **Restaurants** — same.
+- **Prices** — one row per product, showing current price. Click a product to expand its price history timeline. `[+ New price]` lets you add a future-dated or back-dated price with `effective_from`.
+
+Add/edit on Manage pages use the same modals as the `[+]` buttons on the Data Entry page — one component, two entry points.
+
+---
+
+## 5. Task breakdown
+
+Ordered so each step produces something runnable. Rough estimates assume you're comfortable with EF Core already.
+
+1. **Scaffold** — create solution, 4 projects, 1 test project. Wire up DI, logging, Serilog optional. (30 min)
+2. **Domain entities** — write the 6 entities + `AuditableEntity` base. No EF attributes; pure POCOs. (45 min)
+3. **EF Core setup** — `AppDbContext`, fluent configurations per entity, SQLite connection string in `appsettings.json`, `AuditableEntityInterceptor` for timestamps. (1 hr)
+4. **Initial migration + seed** — run `dotnet ef migrations add Initial`, add seeder for Pho and Bun products. App should start and create an empty DB. (30 min)
+5. **Drivers CRUD** — Application commands/queries, API controller, simple Razor Pages for Manage → Drivers. Verify end-to-end. (1 hr)
+6. **Restaurants CRUD** — copy-paste-adapt from Drivers. (30 min)
+7. **Products + Prices** — GET products, full CRUD on prices, Manage → Prices page. Include the price-lookup helper (`GetEffectivePrice(productId, date)`). (1.5 hr)
+8. **Orders — the core** — `BatchCreateOrders` handler with all the rules from §2 (drop zeros, price lookup, duplicate check, transaction). Delete and update endpoints. Unit-test the handler against an in-memory SQLite DB. (3 hr)
+9. **Data Entry page** — driver tabs, restaurant table, client-side state, submit flow. htmx + a small bit of JS for tab state. (3–4 hr)
+10. **Analytics queries** — SQL for each of the 6 endpoints. Most are `GROUP BY` with joins; nothing exotic. (2 hr)
+11. **Analytics page** — Chart.js, KPI cards, toggles, localStorage persistence, custom query panel. (3–4 hr)
+12. **Polish** — empty states, error toasts, "Saved!" feedback, loading spinners, validation messages, favicon. (1–2 hr)
+13. **Seed data script** — for demo/dev: 3 drivers, 8 restaurants, 30 days of randomized orders. Makes the analytics page non-empty out of the box. (1 hr)
+
+Total rough estimate: **~18–22 hours** of focused work for a demo-quality MVP.
+
+---
+
+## 6. Decisions settled (reference)
+
+| Question                                           | Decision                                                               |
+|----------------------------------------------------|------------------------------------------------------------------------|
+| Prices on orders?                                  | Snapshotted at order time via `unit_price` on `order_items`            |
+| Price source                                       | `product_prices` history table, effective-from lookup                  |
+| Price granularity                                  | Per-product (not per-restaurant)                                       |
+| Price updates                                      | Management UI (Manage → Prices)                                        |
+| Missing price on order date                        | Reject whole batch (`NO_PRICE_FOR_DATE`)                               |
+| `created_at` / `updated_at`                        | Yes, on all tables                                                     |
+| `is_active`                                        | Yes, on drivers and restaurants                                        |
+| Order DELETE endpoint                              | Yes                                                                    |
+| Driver ↔ restaurant join table                     | No — every driver sees every restaurant                                |
+| Pre-fill existing orders on date/driver change     | No — each submit creates new orders                                    |
+| Duplicate `(date, driver, restaurant)`             | Rejected with 409; whole batch fails                                   |
+| Driver tab state persistence                       | Client-side only (lost on reload)                                      |
+| Adding/editing drivers and restaurants             | `[+]` button modal pattern everywhere; no separate Settings page       |
+| Validation: kg range                               | `>= 0` and `<= 1,000,000`                                              |
+| Default analytics date range                       | Last 30 days; configurable, persists in localStorage                   |
+| Top-N restaurants/drivers                          | Configurable, persists in localStorage                                 |
+| Toggle-chart state                                 | Persists in localStorage                                               |
+| Custom query entity count                          | Single entity only                                                     |
+| Analytics metric                                   | kg / $ / both — configurable; default both; restaurant-share included  |
+| "Scalable" means                                   | Clean architecture for extension, not load                             |
+| Stack                                              | ASP.NET Core + Razor Pages + EF Core + SQLite                          |
+| Deployment                                         | Local only                                                             |
+
+---
+
+## 7. Explicit non-goals (unchanged from original)
+
+- Auth / login
+- Role-based permissions
+- Google Sheets accounting export *(but plugin point exists via `IAccountingExport`)*
+- Automated order imports
+- Invoicing
+- Mobile app
+- Reporting / data exports

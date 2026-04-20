@@ -1,0 +1,27 @@
+@page
+@model NoodleDelivery.Web.Pages.Manage.DriversModel
+@{
+    ViewData["Title"] = "Manage Drivers";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Drivers</h2>
+    <button class="btn btn-success" id="add-btn">+ New Driver</button>
+</div>
+
+<table class="table table-hover">
+    <thead class="table-light">
+        <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="list-body"></tbody>
+</table>
+
+@section Scripts {
+    <script>const PAGE_TYPE = 'drivers';</script>
+    <script src="~/js/manage.js" asp-append-version="true"></script>
+}
