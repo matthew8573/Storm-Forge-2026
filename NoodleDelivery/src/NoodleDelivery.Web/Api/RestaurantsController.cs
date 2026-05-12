@@ -32,7 +32,8 @@ public class RestaurantsController : ControllerBase
                 Name = r.Name,
                 Address = r.Address,
                 Phone = r.Phone,
-                IsActive = r.IsActive
+                IsActive = r.IsActive,
+                PricePerKg = r.PricePerKg
             })
             .ToListAsync();
 
@@ -51,7 +52,8 @@ public class RestaurantsController : ControllerBase
                 Name = r.Name,
                 Address = r.Address,
                 Phone = r.Phone,
-                IsActive = r.IsActive
+                IsActive = r.IsActive,
+                PricePerKg = r.PricePerKg
             })
             .FirstOrDefaultAsync();
 
@@ -70,7 +72,8 @@ public class RestaurantsController : ControllerBase
             Name = dto.Name,
             Address = dto.Address,
             Phone = dto.Phone,
-            IsActive = true
+            IsActive = true,
+            PricePerKg = dto.PricePerKg
         };
 
         _context.Restaurants.Add(restaurant);
@@ -98,6 +101,7 @@ public class RestaurantsController : ControllerBase
         restaurant.Address = dto.Address;
         restaurant.Phone = dto.Phone;
         restaurant.IsActive = dto.IsActive;
+        restaurant.PricePerKg = dto.PricePerKg;
 
         await _context.SaveChangesAsync();
 
@@ -107,7 +111,8 @@ public class RestaurantsController : ControllerBase
             Name = restaurant.Name,
             Address = restaurant.Address,
             Phone = restaurant.Phone,
-            IsActive = restaurant.IsActive
+            IsActive = restaurant.IsActive,
+            PricePerKg = restaurant.PricePerKg
         });
     }
 

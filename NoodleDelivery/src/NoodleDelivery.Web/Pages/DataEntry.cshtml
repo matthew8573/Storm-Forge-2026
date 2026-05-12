@@ -4,38 +4,60 @@
     ViewData["Title"] = "Data Entry";
 }
 
-<h2 class="mb-4">Daily Data Entry</h2>
+<style>
+    .data-entry-wrap {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 130px); /* viewport minus navbar (~56px) and main py-4 padding (48px) */
+    }
+    .table-scroll {
+        flex: 1 1 0;
+        overflow-y: auto;
+        min-height: 0;
+    }
+    .table-scroll thead th {
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
+    }
+</style>
 
-<!-- Date picker -->
-<div class="row mb-3">
-    <div class="col-auto">
-        <label class="form-label" for="entry-date">Date</label>
-        <input type="date" id="entry-date" class="form-control" />
+<div class="data-entry-wrap">
+    <!-- Header row: title + date -->
+    <div class="d-flex align-items-center gap-4 mb-2">
+        <h2 class="mb-0">Daily Data Entry</h2>
+        <div>
+            <label class="form-label mb-0 me-1" for="entry-date">Date</label>
+            <input type="date" id="entry-date" class="form-control d-inline-block w-auto" />
+        </div>
     </div>
-</div>
 
-<!-- Driver tabs -->
-<ul class="nav nav-tabs mb-0" id="driver-tabs"></ul>
+    <!-- Driver tabs -->
+    <ul class="nav nav-tabs mb-0" id="driver-tabs"></ul>
 
-<!-- Restaurant table -->
-<div id="driver-content" class="border border-top-0 rounded-bottom p-3 d-none">
-    <table class="table table-bordered" id="restaurant-table">
-        <thead>
-            <tr>
-                <th>Restaurant</th>
-                <th>Pho (kg)</th>
-                <th>Bun (kg)</th>
-            </tr>
-        </thead>
-        <tbody id="restaurant-rows"></tbody>
-    </table>
-    <div class="text-end mt-2">
-        <button class="btn btn-primary" id="submit-btn">Submit</button>
+    <!-- Scrollable table + pinned submit -->
+    <div id="driver-content" class="border border-top-0 rounded-bottom d-none d-flex flex-column" style="flex:1;min-height:0;">
+        <div class="table-scroll">
+            <table class="table table-bordered mb-0" id="restaurant-table">
+                <thead>
+                    <tr>
+                        <th>Restaurant</th>
+                        <th>Pho (kg)</th>
+                        <th>Bun (kg)</th>
+                    </tr>
+                </thead>
+                <tbody id="restaurant-rows"></tbody>
+            </table>
+        </div>
+        <div class="border-top px-3 py-2 d-flex justify-content-between align-items-center bg-white">
+            <div id="error-msg" class="alert alert-danger mb-0 py-1 d-none flex-grow-1 me-3"></div>
+            <button class="btn btn-primary ms-auto" id="submit-btn">Submit</button>
+        </div>
     </div>
-    <div id="error-msg" class="alert alert-danger mt-2 d-none"></div>
-</div>
 
-<div id="empty-state" class="text-muted mt-3 d-none">No restaurants added yet — click [+] to add one.</div>
+    <div id="empty-state" class="text-muted mt-3 d-none">No restaurants added yet — click [+] to add one.</div>
+</div>
 
 @section Scripts {
     <script src="~/js/dataentry.js" asp-append-version="true"></script>

@@ -7,6 +7,7 @@ public class RestaurantDto
     public string? Address { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; }
+    public decimal PricePerKg { get; set; }
 }
 
 public class CreateRestaurantDto
@@ -14,6 +15,7 @@ public class CreateRestaurantDto
     public string Name { get; set; } = string.Empty;
     public string? Address { get; set; }
     public string? Phone { get; set; }
+    public decimal PricePerKg { get; set; } = 0;
 }
 
 public class UpdateRestaurantDto
@@ -22,4 +24,5 @@ public class UpdateRestaurantDto
     public string? Address { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; }
+    public decimal PricePerKg { get; set; }
 }

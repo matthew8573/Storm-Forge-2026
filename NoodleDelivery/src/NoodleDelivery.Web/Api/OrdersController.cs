@@ -107,42 +107,16 @@ public class OrdersController : ControllerBase
 
         var batchDate = request.Date;
 
-        // Step 3: Look up effective price for each item
-        // Collect all unique product IDs
-        var allProductIds = filteredOrders
-            .SelectMany(o => o.Items.Select(i => i.ProductId))
-            .Distinct()
-            .ToList();
+        // Step 3: Look up price_per_kg for each restaurant
+        var restaurantIds = filteredOrders.Select(o => o.RestaurantId).Distinct().ToList();
+        var restaurantPriceMap = await _context.Restaurants
+            .Where(r => restaurantIds.Contains(r.RestaurantId))
+            .ToDictionaryAsync(r => r.RestaurantId, r => r.PricePerKg);
 
-        // For each product, find the effective price on batchDate
-        var priceMap = new Dictionary<int, decimal>();
-        foreach (var productId in allProductIds)
+        foreach (var restaurantId in restaurantIds)
         {
-            var maxEffectiveFrom = await _context.ProductPrices
-                .Where(pp => pp.ProductId == productId && pp.EffectiveFrom <= batchDate)
-                .MaxAsync(pp => (DateOnly?)pp.EffectiveFrom);
-
-            if (maxEffectiveFrom == null)
-            {
-                var productName = await _context.Products
-                    .Where(p => p.ProductId == productId)
-                    .Select(p => p.Name)
-                    .FirstOrDefaultAsync() ?? productId.ToString();
-
-                return BadRequest(new
-                {
-                    code = "NO_PRICE_FOR_DATE",
-                    product = productName,
-                    date = batchDate.ToString("yyyy-MM-dd")
-                });
-            }
-
-            var unitPrice = await _context.ProductPrices
-                .Where(pp => pp.ProductId == productId && pp.EffectiveFrom == maxEffectiveFrom)
-                .Select(pp => pp.UnitPrice)
-                .FirstAsync();
-
-            priceMap[productId] = unitPrice;
+            if (!restaurantPriceMap.ContainsKey(restaurantId) || restaurantPriceMap[restaurantId] <= 0)
+                return BadRequest(new { code = "NO_PRICE_FOR_RESTAURANT", restaurant_id = restaurantId });
         }
 
         // Step 4: Check for duplicate (date, driver_id, restaurant_id)
@@ -175,6 +149,7 @@ public class OrdersController : ControllerBase
         {
             foreach (var orderEntry in filteredOrders)
             {
+                var unitPrice = restaurantPriceMap[orderEntry.RestaurantId];
                 var order = new Order
                 {
                     Date = batchDate,
@@ -184,8 +159,8 @@ public class OrdersController : ControllerBase
                     {
                         ProductId = i.ProductId,
                         QuantityKg = i.QuantityKg,
-                        UnitPrice = priceMap[i.ProductId],
-                        LineTotal = i.QuantityKg * priceMap[i.ProductId]
+                        UnitPrice = unitPrice,
+                        LineTotal = i.QuantityKg * unitPrice
                     }).ToList()
                 };
 
@@ -238,49 +213,15 @@ public class OrdersController : ControllerBase
             foreach (var item in order.Items.ToList())
                 _context.OrderItems.Remove(item);
 
-            // Add new items with re-snapshotted prices if date changed
+            // Look up restaurant price_per_kg (re-snapshot if date changed, else keep existing)
+            var restaurant = await _context.Restaurants.FindAsync(order.RestaurantId);
+            if (restaurant == null || restaurant.PricePerKg <= 0)
+                return BadRequest(new { code = "NO_PRICE_FOR_RESTAURANT", restaurant_id = order.RestaurantId });
+
+            var unitPrice = restaurant.PricePerKg;
+
             foreach (var itemEntry in request.Items.Where(i => i.QuantityKg != 0))
             {
-                decimal unitPrice;
-
-                if (dateChanged)
-                {
-                    var maxEffectiveFrom = await _context.ProductPrices
-                        .Where(pp => pp.ProductId == itemEntry.ProductId && pp.EffectiveFrom <= newDate)
-                        .MaxAsync(pp => (DateOnly?)pp.EffectiveFrom);
-
-                    if (maxEffectiveFrom == null)
-                        return BadRequest(new { message = $"No price found for product {itemEntry.ProductId} on {newDate:yyyy-MM-dd}." });
-
-                    unitPrice = await _context.ProductPrices
-                        .Where(pp => pp.ProductId == itemEntry.ProductId && pp.EffectiveFrom == maxEffectiveFrom)
-                        .Select(pp => pp.UnitPrice)
-                        .FirstAsync();
-                }
-                else
-                {
-                    // Keep existing snapshot if date didn't change - re-lookup for safety
-                    var existingItem = order.Items.FirstOrDefault(i => i.ProductId == itemEntry.ProductId);
-                    if (existingItem != null)
-                    {
-                        unitPrice = existingItem.UnitPrice;
-                    }
-                    else
-                    {
-                        var maxEffectiveFrom = await _context.ProductPrices
-                            .Where(pp => pp.ProductId == itemEntry.ProductId && pp.EffectiveFrom <= newDate)
-                            .MaxAsync(pp => (DateOnly?)pp.EffectiveFrom);
-
-                        if (maxEffectiveFrom == null)
-                            return BadRequest(new { message = $"No price found for product {itemEntry.ProductId} on {newDate:yyyy-MM-dd}." });
-
-                        unitPrice = await _context.ProductPrices
-                            .Where(pp => pp.ProductId == itemEntry.ProductId && pp.EffectiveFrom == maxEffectiveFrom)
-                            .Select(pp => pp.UnitPrice)
-                            .FirstAsync();
-                    }
-                }
-
                 order.Items.Add(new OrderItem
                 {
                     ProductId = itemEntry.ProductId,

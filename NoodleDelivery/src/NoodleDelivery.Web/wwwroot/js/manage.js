@@ -37,16 +37,16 @@ async function loadDrivers() {
 function renderDriverRow(driver) {
     const tr = document.createElement('tr');
     const statusBadge = driver.is_active
-        ? `<span class="badge bg-success status-badge" style="cursor:pointer;" data-id="${driver.driver_id}" data-active="true">Active</span>`
-        : `<span class="badge bg-secondary status-badge" style="cursor:pointer;" data-id="${driver.driver_id}" data-active="false">Inactive</span>`;
+        ? `<span class="badge bg-success status-badge" style="cursor:pointer;" title="Click to deactivate">Active</span>`
+        : `<span class="badge bg-secondary status-badge" style="cursor:pointer;" title="Click to activate">Inactive</span>`;
 
     tr.innerHTML = `
-        <td>${escapeHtml(driver.name)}</td>
-        <td>${escapeHtml(driver.phone || '')}</td>
-        <td>${statusBadge}</td>
-        <td>
-            <button class="btn btn-sm btn-outline-primary me-1 edit-btn" data-id="${driver.driver_id}">Edit</button>
-            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${driver.driver_id}" data-name="${escapeHtml(driver.name)}">Delete</button>
+        <td class="align-middle fw-medium">${escapeHtml(driver.name)}</td>
+        <td class="align-middle text-muted">${escapeHtml(driver.phone || '—')}</td>
+        <td class="align-middle">${statusBadge}</td>
+        <td class="align-middle text-end">
+            <button class="btn btn-sm btn-outline-primary me-1 edit-btn">Edit</button>
+            <button class="btn btn-sm btn-outline-danger delete-btn">Delete</button>
         </td>
     `;
 
@@ -162,16 +162,18 @@ async function loadRestaurants() {
 function renderRestaurantRow(restaurant) {
     const tr = document.createElement('tr');
     const statusBadge = restaurant.is_active
-        ? `<span class="badge bg-success status-badge" style="cursor:pointer;" data-id="${restaurant.restaurant_id}" data-active="true">Active</span>`
-        : `<span class="badge bg-secondary status-badge" style="cursor:pointer;" data-id="${restaurant.restaurant_id}" data-active="false">Inactive</span>`;
+        ? `<span class="badge bg-success status-badge" style="cursor:pointer;" title="Click to deactivate">Active</span>`
+        : `<span class="badge bg-secondary status-badge" style="cursor:pointer;" title="Click to activate">Inactive</span>`;
+    const priceText = restaurant.price_per_kg > 0 ? `₽${Number(restaurant.price_per_kg).toFixed(0)}` : '<span class="text-muted">—</span>';
 
     tr.innerHTML = `
-        <td>${escapeHtml(restaurant.name)}</td>
-        <td>${escapeHtml(restaurant.phone || '')}</td>
-        <td>${statusBadge}</td>
-        <td>
-            <button class="btn btn-sm btn-outline-primary me-1 edit-btn" data-id="${restaurant.restaurant_id}">Edit</button>
-            <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${restaurant.restaurant_id}" data-name="${escapeHtml(restaurant.name)}">Delete</button>
+        <td class="align-middle fw-medium">${escapeHtml(restaurant.name)}</td>
+        <td class="align-middle text-muted">${escapeHtml(restaurant.phone || '—')}</td>
+        <td class="align-middle">${priceText}</td>
+        <td class="align-middle">${statusBadge}</td>
+        <td class="align-middle text-end">
+            <button class="btn btn-sm btn-outline-primary me-1 edit-btn">Edit</button>
+            <button class="btn btn-sm btn-outline-danger delete-btn">Delete</button>
         </td>
     `;
 
@@ -413,7 +415,7 @@ function renderList(items, rowFn) {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!items || items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No items found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">No items found.</td></tr>';
         return;
     }
     items.forEach(item => tbody.appendChild(rowFn(item)));

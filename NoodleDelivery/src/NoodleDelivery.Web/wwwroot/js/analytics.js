@@ -4,10 +4,15 @@
 
 // ── Chart instances ───────────────────────────────────────────────────────────
 const charts = {};
+let _overTimeData = [];
+let _overTimeFilter = 'all'; // 'all' | 'Pho' | 'Bun'
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     // Default date range: last 30 days
+    // Default date range: last 30 days, but if that returns no data the user can adjust.
+    // We use a fixed fallback of 2025-11-01 to 2025-11-30 only when localStorage is empty
+    // and no recent data exists — here we simply default to last 30 days from today.
     const today = new Date();
     const thirtyDaysAgo = new Date(today);
     thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -25,10 +30,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         contribution: true,
     };
 
-    document.getElementById('from-date').value = savedRange ? savedRange.from : fromStr;
-    document.getElementById('to-date').value = savedRange ? savedRange.to : todayStr;
-    document.getElementById('cq-from').value = savedRange ? savedRange.from : fromStr;
-    document.getElementById('cq-to').value = savedRange ? savedRange.to : todayStr;
+    // Default to 2025-11-01 → 2025-11-30 when no saved range exists (matches imported data)
+    const defaultFrom = savedRange ? savedRange.from : '2025-11-01';
+    const defaultTo = savedRange ? savedRange.to : '2025-11-30';
+    document.getElementById('from-date').value = defaultFrom;
+    document.getElementById('to-date').value = defaultTo;
+    document.getElementById('cq-from').value = defaultFrom;
+    document.getElementById('cq-to').value = defaultTo;
 
     // Restore metric radio
     const metricRadio = document.querySelector(`input[name="metric"][value="${savedMetric}"]`);
@@ -65,6 +73,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('entity-type').addEventListener('change', loadEntityOptions);
     document.getElementById('cq-generate').addEventListener('click', runCustomQuery);
+
+    // Over-time product filter buttons
+    ['all', 'pho', 'bun'].forEach(key => {
+        document.getElementById(`ot-btn-${key}`).addEventListener('click', () => {
+            _overTimeFilter = key === 'all' ? 'all' : key.charAt(0).toUpperCase() + key.slice(1);
+            document.querySelectorAll('[id^="ot-btn-"]').forEach(b => b.classList.remove('active'));
+            document.getElementById(`ot-btn-${key}`).classList.add('active');
+            renderOverTimeChart(_overTimeData, document.querySelector('input[name="metric"]:checked')?.value || 'both');
+        });
+    });
 
     // Load entity options for custom query
     await loadEntityOptions();
@@ -118,10 +136,10 @@ async function loadDashboard() {
     try {
         const qs = `from=${from}&to=${to}`;
         const [topRest, topDriver, overTime, contribution, summary] = await Promise.all([
-            fetchJson(`/api/v1/analytics/top-restaurants?${qs}`).catch(() => []),
-            fetchJson(`/api/v1/analytics/top-drivers?${qs}`).catch(() => []),
+            fetchJson(`/api/v1/analytics/top-restaurants?${qs}&limit=5`).catch(() => []),
+            fetchJson(`/api/v1/analytics/top-drivers?${qs}&limit=5`).catch(() => []),
             fetchJson(`/api/v1/analytics/over-time?${qs}`).catch(() => []),
-            fetchJson(`/api/v1/analytics/contribution?${qs}`).catch(() => []),
+            fetchJson(`/api/v1/analytics/restaurant-contribution?${qs}`).catch(() => []),
             fetchJson(`/api/v1/analytics/summary?${qs}`).catch(() => ({})),
         ]);
 
@@ -138,22 +156,18 @@ async function loadDashboard() {
 
 // ── KPI Cards ─────────────────────────────────────────────────────────────────
 function renderKpis(summary, topRest, topDriver) {
-    const totalKg = summary.total_kg != null ? `${Number(summary.total_kg).toFixed(1)} kg` : '-';
-    const totalRev = summary.total_revenue != null ? `$${Number(summary.total_revenue).toFixed(2)}` : '-';
-    document.getElementById('kpi-kg').textContent = totalKg;
+    // total_kg_by_product is { "Pho": 120, "Bun": 45 }
+    const kgByProduct = summary.total_kg_by_product || {};
+    const kgParts = Object.entries(kgByProduct).map(([name, kg]) => `${name}: ${Number(kg).toFixed(0)} kg`);
+    document.getElementById('kpi-kg').textContent = kgParts.length ? kgParts.join(' · ') : '-';
+
+    const totalRev = summary.total_revenue != null ? `₽${Number(summary.total_revenue).toLocaleString()}` : '-';
     document.getElementById('kpi-rev').textContent = totalRev;
 
-    if (topRest && topRest.length > 0) {
-        document.getElementById('kpi-top-rest').textContent = topRest[0].name || '-';
-    } else {
-        document.getElementById('kpi-top-rest').textContent = '-';
-    }
-
-    if (topDriver && topDriver.length > 0) {
-        document.getElementById('kpi-top-driver').textContent = topDriver[0].name || '-';
-    } else {
-        document.getElementById('kpi-top-driver').textContent = '-';
-    }
+    const topRestName = summary.top_restaurant ? summary.top_restaurant.name : (topRest && topRest[0] ? topRest[0].name : '-');
+    const topDriverName = summary.top_driver ? summary.top_driver.name : (topDriver && topDriver[0] ? topDriver[0].name : '-');
+    document.getElementById('kpi-top-rest').textContent = topRestName || '-';
+    document.getElementById('kpi-top-driver').textContent = topDriverName || '-';
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
@@ -200,14 +214,17 @@ function renderOverTimeChart(data, metric) {
     if (!ctx) return;
     destroyChart('overTime');
 
-    const labels = (data || []).map(d => d.date);
-    const products = getUniqueProducts(data);
+    _overTimeData = data || [];
+
+    const labels = _overTimeData.map(d => d.date);
+    let products = getUniqueProducts(_overTimeData);
+    if (_overTimeFilter !== 'all') {
+        products = products.filter(p => p === _overTimeFilter);
+    }
+
     const datasets = products.map((prod, i) => ({
         label: `${prod} (kg)`,
-        data: (data || []).map(d => {
-            const item = (d.items || []).find(it => it.product === prod);
-            return item ? item.quantity_kg : 0;
-        }),
+        data: _overTimeData.map(d => (d.kg_by_product || {})[prod] || 0),
         borderColor: getColor(i),
         backgroundColor: getColor(i, 0.2),
         fill: false,
@@ -241,7 +258,14 @@ function renderContributionChart(data) {
         },
         options: {
             responsive: true,
-            plugins: { title: { display: true, text: 'Revenue Contribution by Restaurant' }, legend: { position: 'right' } },
+            maintainAspectRatio: false,
+            plugins: {
+                title: { display: true, text: 'Revenue Contribution by Restaurant' },
+                legend: {
+                    position: 'bottom',
+                    labels: { boxWidth: 12, padding: 10 },
+                },
+            },
         },
     });
 }
@@ -283,37 +307,45 @@ async function runCustomQuery() {
     try {
         const data = await fetchJson(`/api/v1/analytics/entity?type=${type}&id=${id}&from=${from}&to=${to}`);
 
-        const totalKg = data.total_kg != null ? Number(data.total_kg).toFixed(1) : '0';
-        const totalRev = data.total_revenue != null ? Number(data.total_revenue).toFixed(2) : '0.00';
+        const kgByProduct = data.total_kg_by_product || {};
+        const kgParts = Object.entries(kgByProduct).map(([prod, kg]) => `${escapeHtml(prod)}: <strong>${Number(kg).toFixed(1)} kg</strong>`);
+        const totalKgStr = kgParts.length ? kgParts.join(' &nbsp;·&nbsp; ') : '<strong>0 kg</strong>';
+        const totalRev = data.total_revenue != null ? Number(data.total_revenue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
         const name = data.name || '';
 
         resultEl.innerHTML = `
             <div class="mb-3">
                 <strong>${escapeHtml(name)}</strong> &mdash;
-                Total Volume: <strong>${escapeHtml(totalKg)} kg</strong>,
-                Total Revenue: <strong>$${escapeHtml(totalRev)}</strong>
+                Volume: ${totalKgStr} &nbsp;·&nbsp;
+                Revenue: <strong>₽${escapeHtml(totalRev)}</strong>
             </div>
-            <canvas id="cq-chart" style="max-height: 250px;"></canvas>
+            <div style="max-height:280px;"><canvas id="cq-chart"></canvas></div>
         `;
 
-        const breakdown = data.daily || [];
+        const breakdown = data.daily_breakdown || [];
+        if (breakdown.length === 0) {
+            resultEl.insertAdjacentHTML('beforeend', '<p class="text-muted">No daily breakdown available.</p>');
+            return;
+        }
+
         const labels = breakdown.map(d => d.date);
-        const kgData = breakdown.map(d => d.quantity_kg || 0);
+        const products = [...new Set(breakdown.flatMap(d => Object.keys(d.kg_by_product || {})))];
+        const datasets = products.map((prod, i) => ({
+            label: `${prod} (kg)`,
+            data: breakdown.map(d => (d.kg_by_product || {})[prod] || 0),
+            backgroundColor: getColor(i, 0.7),
+        }));
+
         const ctx = document.getElementById('cq-chart');
-        if (ctx && labels.length > 0) {
+        if (ctx) {
             new Chart(ctx, {
                 type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{
-                        label: 'Volume (kg)',
-                        data: kgData,
-                        backgroundColor: getColor(0, 0.6),
-                    }],
-                },
+                data: { labels, datasets },
                 options: {
                     responsive: true,
-                    plugins: { legend: { display: false } },
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { x: { stacked: true }, y: { stacked: true } },
                 },
             });
         }
@@ -326,22 +358,22 @@ async function runCustomQuery() {
 function buildStackedDatasets(data, metric) {
     const products = getUniqueProducts(data);
     return products.map((prod, i) => {
-        const kgData = (data || []).map(item => {
-            const p = (item.items || []).find(it => it.product === prod);
-            return p ? p.quantity_kg : 0;
-        });
+        const kgData = (data || []).map(item => (item.kg_by_product || {})[prod] || 0);
+        // revenue is per-entity total; split proportionally by kg share per product
         const revData = (data || []).map(item => {
-            const p = (item.items || []).find(it => it.product === prod);
-            return p ? p.revenue : 0;
+            const totalKg = Object.values(item.kg_by_product || {}).reduce((a, b) => a + b, 0);
+            const prodKg = (item.kg_by_product || {})[prod] || 0;
+            const share = totalKg > 0 ? prodKg / totalKg : 0;
+            return Math.round((item.revenue || 0) * share);
         });
         if (metric === 'kg') {
             return { label: `${prod} (kg)`, data: kgData, backgroundColor: getColor(i, 0.7) };
         } else if (metric === 'revenue') {
-            return { label: `${prod} ($)`, data: revData, backgroundColor: getColor(i, 0.7) };
+            return { label: `${prod} (₽)`, data: revData, backgroundColor: getColor(i, 0.7) };
         } else {
             return [
                 { label: `${prod} (kg)`, data: kgData, backgroundColor: getColor(i * 2, 0.7) },
-                { label: `${prod} ($)`, data: revData, backgroundColor: getColor(i * 2 + 1, 0.7) },
+                { label: `${prod} (₽)`, data: revData, backgroundColor: getColor(i * 2 + 1, 0.7) },
             ];
         }
     }).flat();
@@ -350,7 +382,7 @@ function buildStackedDatasets(data, metric) {
 function getUniqueProducts(data) {
     const set = new Set();
     (data || []).forEach(item => {
-        (item.items || []).forEach(it => set.add(it.product));
+        Object.keys(item.kg_by_product || {}).forEach(p => set.add(p));
     });
     return [...set];
 }
@@ -390,4 +422,8 @@ async function fetchJson(url) {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return resp.json();
+}
+
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

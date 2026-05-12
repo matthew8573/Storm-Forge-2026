@@ -6,12 +6,26 @@
     <title>@ViewData["Title"] - Noodle Delivery</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <style>
+        .navbar-custom { background: #1a2f4a; }
+        .navbar-custom .navbar-brand { color: #f6c34f; font-weight: 700; letter-spacing: 0.02em; }
+        .navbar-custom .navbar-brand:hover { color: #fbd877; }
+        .navbar-custom .nav-link { color: rgba(255,255,255,0.82); }
+        .navbar-custom .nav-link:hover,
+        .navbar-custom .nav-link.active { color: #f6c34f !important; }
+        .navbar-custom .dropdown-menu { border: none; box-shadow: 0 4px 16px rgba(0,0,0,0.15); border-radius: 8px; }
+        .navbar-custom .dropdown-item:hover { background: #eef2f9; }
+        .navbar-custom .navbar-toggler { border-color: rgba(255,255,255,0.3); }
+    </style>
 </head>
 <body>
+    @{
+        var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? "";
+    }
     <header>
-        <nav class="navbar navbar-expand-sm navbar-dark bg-dark mb-3">
+        <nav class="navbar navbar-expand-sm navbar-custom navbar-dark mb-3">
             <div class="container">
-                <a class="navbar-brand fw-bold" asp-page="/DataEntry">Noodle Delivery</a>
+                <a class="navbar-brand" asp-page="/DataEntry">Noodle Delivery</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
                         aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
@@ -19,13 +33,13 @@
                 <div class="collapse navbar-collapse" id="navbarContent">
                     <ul class="navbar-nav ms-auto">
                         <li class="nav-item">
-                            <a class="nav-link" asp-page="/DataEntry">Data Entry</a>
+                            <a class="nav-link @(currentPage == "/DataEntry" ? "active" : "")" asp-page="/DataEntry">Data Entry</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" asp-page="/Analytics">Analytics</a>
+                            <a class="nav-link @(currentPage == "/Analytics" ? "active" : "")" asp-page="/Analytics">Analytics</a>
                         </li>
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <a class="nav-link dropdown-toggle @(currentPage.StartsWith("/Manage") ? "active" : "")" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 Manage
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">

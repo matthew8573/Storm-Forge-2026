@@ -60,27 +60,27 @@
 <!-- KPI cards -->
 <div class="row mb-4" id="kpi-cards">
     <div class="col-md-3 mb-2">
-        <div class="card text-center p-3 kpi-card">
+        <div class="card text-center p-3 kpi-card kpi-blue">
             <h6>Total Volume</h6>
-            <p id="kpi-kg" class="fs-4 fw-bold mb-0">-</p>
+            <p id="kpi-kg" class="fs-5 fw-bold mb-0">-</p>
         </div>
     </div>
     <div class="col-md-3 mb-2">
-        <div class="card text-center p-3 kpi-card">
+        <div class="card text-center p-3 kpi-card kpi-green">
             <h6>Total Revenue</h6>
             <p id="kpi-rev" class="fs-4 fw-bold mb-0">-</p>
         </div>
     </div>
     <div class="col-md-3 mb-2">
-        <div class="card text-center p-3 kpi-card">
+        <div class="card text-center p-3 kpi-card kpi-amber">
             <h6>Top Restaurant</h6>
-            <p id="kpi-top-rest" class="fs-5 mb-0">-</p>
+            <p id="kpi-top-rest" class="fs-5 fw-bold mb-0">-</p>
         </div>
     </div>
     <div class="col-md-3 mb-2">
-        <div class="card text-center p-3 kpi-card">
+        <div class="card text-center p-3 kpi-card kpi-rose">
             <h6>Top Driver</h6>
-            <p id="kpi-top-driver" class="fs-5 mb-0">-</p>
+            <p id="kpi-top-driver" class="fs-5 fw-bold mb-0">-</p>
         </div>
     </div>
 </div>
@@ -94,10 +94,19 @@
         <div class="card p-3"><canvas id="chart-top-drivers"></canvas></div>
     </div>
     <div class="col-md-8 mb-4" id="chart-over-time-wrap">
-        <div class="card p-3"><canvas id="chart-over-time"></canvas></div>
+        <div class="card p-3">
+            <div class="d-flex justify-content-end gap-2 mb-2">
+                <button class="btn btn-sm btn-outline-secondary active" id="ot-btn-all">All</button>
+                <button class="btn btn-sm btn-outline-secondary" id="ot-btn-pho">Pho</button>
+                <button class="btn btn-sm btn-outline-secondary" id="ot-btn-bun">Bun</button>
+            </div>
+            <canvas id="chart-over-time"></canvas>
+        </div>
     </div>
-    <div class="col-md-4 mb-4" id="chart-contribution-wrap">
-        <div class="card p-3"><canvas id="chart-contribution"></canvas></div>
+    <div class="col-12 mb-4" id="chart-contribution-wrap">
+        <div class="card p-3">
+            <canvas id="chart-contribution" style="max-height: 320px;"></canvas>
+        </div>
     </div>
 </div>
 

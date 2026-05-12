@@ -1,60 +1,192 @@
+/* ── Base ───────────────────────────────────────────────────────────────────── */
 html {
-  font-size: 14px;
+    font-size: 14px;
+    position: relative;
+    min-height: 100%;
 }
 
 @media (min-width: 768px) {
-  html {
-    font-size: 16px;
-  }
+    html { font-size: 16px; }
 }
 
 body {
-  background-color: #f8f9fa;
-  margin-bottom: 60px;
+    background-color: #f4f5f7;
+    margin-bottom: 60px;
+    color: #2d3748;
 }
 
-.nav-tabs .nav-link {
-  cursor: pointer;
+/* ── Navbar ─────────────────────────────────────────────────────────────────── */
+.navbar-brand {
+    font-size: 1.2rem;
+    letter-spacing: 0.01em;
 }
 
-#toast-container {
-  position: fixed;
-  bottom: 1rem;
-  right: 1rem;
-  z-index: 9999;
+.navbar .nav-link {
+    font-weight: 500;
+    letter-spacing: 0.01em;
 }
 
-.toast {
-  min-width: 250px;
+.navbar .nav-link.active,
+.navbar .nav-link:focus {
+    color: #fff !important;
+    opacity: 1;
 }
 
-#driver-tabs .add-tab {
-  font-size: 1.2rem;
-  font-weight: bold;
+/* ── Cards ──────────────────────────────────────────────────────────────────── */
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04);
 }
 
-.table input[type=number] {
-  width: 100px;
-}
-
-.price-history {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
+/* ── KPI Cards ──────────────────────────────────────────────────────────────── */
 .kpi-card {
-  transition: box-shadow 0.2s;
+    transition: box-shadow 0.18s, transform 0.18s;
+    border-radius: 10px;
+    border-left: 4px solid #e2e8f0;
 }
 
 .kpi-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+.kpi-card.kpi-blue  { border-left-color: #4e79a7; }
+.kpi-card.kpi-green { border-left-color: #59a14f; }
+.kpi-card.kpi-amber { border-left-color: #f28e2b; }
+.kpi-card.kpi-rose  { border-left-color: #e15759; }
+
+.kpi-card h6 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: #718096;
+    margin-bottom: 6px;
 }
 
-html {
-  position: relative;
-  min-height: 100%;
+/* ── Tables ─────────────────────────────────────────────────────────────────── */
+.table {
+    font-size: 0.94rem;
+}
+
+.table thead th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #718096;
+    background: #f8f9fc;
+    border-bottom: 2px solid #e2e8f0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.table tbody tr {
+    transition: background 0.12s;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #eef2f9;
+}
+
+.table input[type=number] {
+    width: 100px;
+    border-radius: 6px;
+}
+
+/* ── Tabs (driver tabs on data entry) ───────────────────────────────────────── */
+.nav-tabs .nav-link {
+    cursor: pointer;
+    font-weight: 500;
+    color: #4a5568;
+    border-radius: 8px 8px 0 0;
+    padding: 0.45rem 1rem;
+}
+
+.nav-tabs .nav-link.active {
+    color: #2b6cb0;
+    font-weight: 700;
+    background: #fff;
+    border-bottom-color: #fff;
+}
+
+#driver-tabs .add-tab {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #38a169 !important;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────────── */
+.btn {
+    border-radius: 7px;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: #2b6cb0;
+    border-color: #2b6cb0;
+}
+
+.btn-primary:hover {
+    background-color: #2c5282;
+    border-color: #2c5282;
+}
+
+.btn:focus, .btn:active:focus,
+.btn-link.nav-link:focus,
+.form-control:focus,
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #4e79a7;
+}
+
+/* ── Toast ──────────────────────────────────────────────────────────────────── */
+#toast-container {
+    position: fixed;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.toast {
+    min-width: 260px;
+    border-radius: 9px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+/* ── Page titles ────────────────────────────────────────────────────────────── */
+h2 {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: #1a202c;
+}
+
+/* ── Badge tweaks ───────────────────────────────────────────────────────────── */
+.badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.3em 0.65em;
+    border-radius: 6px;
+}
+
+/* ── price history ──────────────────────────────────────────────────────────── */
+.price-history {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* ── Analytics toggle panel ─────────────────────────────────────────────────── */
+#toggle-panel .card {
+    border-radius: 8px;
+    background: #fff;
+}
+
+/* ── Custom query result area ───────────────────────────────────────────────── */
+#cq-result canvas {
+    border-radius: 6px;
 }

@@ -13,5 +13,6 @@ public class RestaurantConfiguration : IEntityTypeConfiguration<Restaurant>
         builder.Property(r => r.Address).HasMaxLength(255);
         builder.Property(r => r.Phone).HasMaxLength(20);
         builder.Property(r => r.IsActive).HasDefaultValue(true);
+        builder.Property(r => r.PricePerKg).HasColumnType("decimal(10,2)").HasDefaultValue(0m);
     }
 }

@@ -223,13 +223,12 @@ async function handleSubmit() {
             const items = [];
             if (phoVal > 0) items.push({ product_id: phoProduct.product_id, quantity_kg: phoVal });
             if (bunVal > 0) items.push({ product_id: bunProduct.product_id, quantity_kg: bunVal });
-            orders.push({ restaurant_id: rid, items });
+            orders.push({ driver_id: activeDriverId, restaurant_id: rid, items });
         }
     });
 
     const payload = {
         date: entryDate,
-        driver_id: activeDriverId,
         orders,
     };
 
